@@ -59,9 +59,9 @@ GUARD_MESSAGES = [
     "اكتب بعدين براحتك، دلوقتي العب دور الطالب المجتهد 🎭",
     "إحنا في سيشن مذاكرة مش سهرة عائلية 🫠",
     "لو فتحت الكتاب زي ما فتحت الشات كان زمانك خلصت المنهج 15 مرة 📚🔥",
-    "كفاية يا، التنسيق مش هييجي بالدردشة 🤦",
-    "الرسالة في ذمة الله… وأنت لسه عليك باب كامل 😶",
-    "كل مرة تبعت رسالة، في ورقة امتحان هناك بتضحك عليك 📝😈",
+    "كفاية يسطا، التنسيق مش هييجي بالدردشة 🤦",
+    "الرسالة في ذمة الله… وأنت لسه عليك قااااد كدهوو 😶",
+    "كل مرة بتبعت رسالة، في ورقة امتحان واقفة هناك بتضحك عليك 📝😈",
     "بطل فهلوة وارجع لذاكر قبل ما المنهج ينتقم 😤",
     "النظام رصد محاولة فشل دراسي وتم التعامل معها 🤖",
     "أنت داخل تذاكر ولا تفتح برنامج حواري؟ 🙃",
@@ -72,19 +72,18 @@ GUARD_MESSAGES = [
 MOTIVATIONAL = [
     "⚡ استمر — كل دقيقة بتفرق!",
     "📖 بتبني مستقبلك دلوقتي. متوقفش.",
-    "🔥 الاستمرارية أهم من الشدة. فضل مركّز!",
-    "🧠 دماغك بتقوى مع كل صفحة.",
+    "🔥 الاستمرارية أهم من الشدة. ربنا معاك يا بطل!",
     "💪 الأبطال بيتصنعوا في لحظات زي دي.",
     "🌟 ساعة أقرب لهدفك. أنت قادر!",
     "🎯 ركّز. تنفس. كمّل.",
-    "🚀 الجهد اللي بتبذله النهارده هيجيب نتيجة بكره.",
+    "🚀 الجهد اللي بتبذله النهارده هتجني ثماره بكره.",
 ]
 
 BREAK_OVER = [
     "☕ البريك خلص! جه وقت الشغل. 📚",
     "⏰ وقت الراحة انتهى — ارجع يا بطل! 💪",
     "🔔 البريك انتهى! مستقبلك هيشكرك. 🚀",
-    "📚 اتشحنت؟ يلا ننقفل تاني! 🔒",
+    "📚 اتشحنت؟ يلا نحارب تاني! 🔒",
 ]
 
 # ── Utility ────────────────────────────────────────────────────────────────
@@ -237,7 +236,7 @@ async def cmd_study(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👥 المشاركين حتى دلوقتي: 1\n\n"
         f"⏳ *عندك 5 دقايق تنضم!*\n"
         f"السيشن هيبدأ: *{fmt_time(join_deadline)}*\n\n"
-        f"اضغط الزر تانت 👇",
+        f"اضغط الزر للانضمام 👇",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
@@ -283,7 +282,7 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏱ المدة: *{fmt_duration(session['duration'])}*\n"
         f"👥 المشاركين ({len(names)}): {', '.join(names)}\n\n"
         f"⏳ السيشن هيبدأ في أقل من 5 دقايق!\n"
-        f"اضغط الزر تانت 👇",
+        f"اضغط الزر للانضمام 👇",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
@@ -323,7 +322,7 @@ async def start_session_job(context: ContextTypes.DEFAULT_TYPE):
         f"🏁 ينتهي: *{fmt_time(end.isoformat())}*\n\n"
         f"📵 *تم تقييد المشاركين.* وضع التركيز شغال!\n"
         f"_{mentions}_\n\n"
-        f"_باقي الجروب يقدر يتكلم عادي_ 🙂",
+        f"_باقي الجروب يقدر يتكلم عادي_ ",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -399,7 +398,7 @@ async def end_session_job(context: ContextTypes.DEFAULT_TYPE):
         f"🎉 أنتم أبطال فعلاً!\n"
         f"⏱ وقت المذاكرة: *{fmt_duration(session['duration'])}*\n\n"
         f"*المشاركين:*\n" + "\n".join(lines) + "\n\n"
-        f"💤 تم فك التقييد عن الجميع. استحقوا الراحة!\n\n"
+        f"💤 تم فك التقييد عن الجميع. تستحقوا تريحوا شوية!\n\n"
         f"{mentions_text}\n"
         f"خدوا بريك صغير وابدأوا سيشن جديد يا أبطال 🚀\n\n"
         f"اختار مدة البريك 👇",
@@ -451,7 +450,7 @@ async def break_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"☕ *{user.full_name}* بدأ بريك!\n\n"
         f"⏱ المدة: *{minutes} دقيقة*\n"
         f"🔔 هترجع: *{fmt_time(break_end.isoformat())}*\n\n"
-        f"_استرخي واتشحن — هنناديك لما الوقت ييجي 😴_",
+        f"_استرخي واتشحن عشان تكمل — هناديك لما الوقت ييجي 😴_",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -556,7 +555,7 @@ async def end_break_job(context: ContextTypes.DEFAULT_TYPE):
         await restrict_user(context.bot, chat_int, int(uid))
         await context.bot.send_message(
             chat_int,
-            f"🔒 {men} رجع للمذاكرة! التقييد شغال تاني.",
+            f"🔒 {men} ارجع للمذاكرة يا بطل ! التقييد اشغتل تاني.",
             parse_mode=ParseMode.MARKDOWN,
         )
 
@@ -636,7 +635,7 @@ async def cmd_pomodoro(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔄 الدورات: *{cycles}* × (25 دقيقة مذاكرة + 5 دقايق بريك)\n"
         f"⏱ الإجمالي: *{fmt_duration(total)}*\n\n"
         f"⏳ *5 دقايق للانضمام!*\n"
-        f"اضغط الزر تانت 👇",
+        f"اضغط الزر للانضمام 👇",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=InlineKeyboardMarkup(keyboard),
     )
