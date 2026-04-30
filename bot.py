@@ -44,6 +44,8 @@ def save_data(data: dict):
 
 data = load_data()
 
+_announced_chats: set = set()
+
 # ── Motivational messages ──────────────────────────────────────────────────
 
 MOTIVATIONAL = [
@@ -205,6 +207,16 @@ async def unpin_message(bot, chat_id: int, message_id: int):
     except TelegramError as e:
         logger.warning(f"فشل إلغاء التثبيت: {e}")
 
+async def maybe_announce(bot, chat_id: int):
+    """بيبعت الرسالة مرة واحدة بس لكل جروب أول ما البوت يشوفه."""
+    if chat_id in _announced_chats:
+        return
+    _announced_chats.add(chat_id)
+    try:
+        await bot.send_message(chat_id, "حسوا على دمكم وشوفوا اللي وراكم فاضلكم شهر ونص يا ولاد ال")
+    except Exception:
+        pass
+
 # ── /reset ─────────────────────────────────────────────────────────────────
 
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -249,6 +261,8 @@ async def cmd_study(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type == "private":
         await update.message.reply_text("❌ الأمر ده بيشتغل في المجموعات بس.")
         return
+
+    await maybe_announce(context.bot, update.effective_chat.id)
 
     args = context.args
     if not args:
@@ -863,6 +877,8 @@ async def guard_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or update.effective_chat.type == "private":
         return
 
+    await maybe_announce(context.bot, update.effective_chat.id)
+
     chat_id = str(update.effective_chat.id)
     uid = str(update.effective_user.id)
 
@@ -941,15 +957,6 @@ def main():
 
     async def post_init(application):
         schedule_recurring_jobs(application)
-        # رسالة فورية مرة واحدة عند بداية البوت
-        for chat_id_str in data["sessions"]:
-            try:
-                await application.bot.send_message(
-                    int(chat_id_str),
-                    "حسوا على دمكم وشوفوا اللي وراكم فاضلكم شهر ونص يا ولاد ال",
-                )
-            except Exception:
-                pass
 
     app.post_init = post_init
 
