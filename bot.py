@@ -941,6 +941,15 @@ def main():
 
     async def post_init(application):
         schedule_recurring_jobs(application)
+        # رسالة فورية مرة واحدة عند بداية البوت
+        for chat_id_str in data["sessions"]:
+            try:
+                await application.bot.send_message(
+                    int(chat_id_str),
+                    "حسوا على دمكم وشوفوا اللي وراكم فاضلكم شهر ونص يا ولاد ال",
+                )
+            except Exception:
+                pass
 
     app.post_init = post_init
 
