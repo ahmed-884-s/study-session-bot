@@ -265,7 +265,7 @@ async def maybe_announce(bot, chat_id: int):
     try:
         await bot.send_message(
             chat_id,
-            "📚 *تم تحديث البوت !*\n\nاستخدم /start لمشاهدة كل الأوامر.",
+            "يلا شوفوا اللي وراكم عشان هنرش مية. 🌊",
             parse_mode=ParseMode.MARKDOWN
         )
     except Exception:
@@ -849,7 +849,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 lines.append(f" 📖 {pinfo['name']} — بيذاكر")
 
         state_emoji = "⏳" if session["state"] == "waiting" else "🔒"
-        state_text = "بتستنى مشاركين" if session["state"] == "waiting" else "شغالة"
+        state_text = "مستنى مشاركين" if session["state"] == "waiting" else "شغالة"
         topic_line = f"\n📝 الموضوع: *{session['topic']}*" if session.get("topic") else ""
 
         # حساب الوقت المتبقي
