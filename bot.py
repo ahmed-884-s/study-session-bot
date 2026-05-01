@@ -265,7 +265,7 @@ async def maybe_announce(bot, chat_id: int):
     try:
         await bot.send_message(
             chat_id,
-            "📚 *StudyLock Bot جاهز!*\n\nاستخدم /start لمشاهدة كل الأوامر.",
+            "📚 *تم تحديث البوت !*\n\nاستخدم /start لمشاهدة كل الأوامر.",
             parse_mode=ParseMode.MARKDOWN
         )
     except Exception:
