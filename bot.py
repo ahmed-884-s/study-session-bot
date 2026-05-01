@@ -420,7 +420,7 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     uid = str(user.id)
     if uid in session["participants"]:
-        await query.answer("✅ انت شارك أصلاً!", show_alert=True)
+        await query.answer("✅ انت مشارك أصلاً!", show_alert=True)
         return
 
     session["participants"][uid] = {"name": user.full_name, "username": user.username or ""}
