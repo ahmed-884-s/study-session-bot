@@ -216,13 +216,7 @@ async def unpin_msg(bot, chat_id: int, message_id: int):
         logger.warning(f"unpin failed: {e}")
 
 async def maybe_announce(bot, chat_id: int):
-    if chat_id in _announced_chats:
-        return
-    _announced_chats.add(chat_id)
-    try:
-        await bot.send_message(chat_id, "📚 *StudyLock Bot جاهز!*\nاستخدم /start لمشاهدة الأوامر.", parse_mode=ParseMode.MARKDOWN)
-    except Exception:
-        pass
+    pass  # disabled
 
 async def is_admin(bot, chat_id: int, user_id: int) -> bool:
     try:
