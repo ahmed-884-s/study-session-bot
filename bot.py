@@ -1096,7 +1096,7 @@ async def handle_mute_commands(update: Update, context: ContextTypes.DEFAULT_TYP
             until_date=until,
         )
         await update.message.reply_text(
-            f"🔇 تم كتف *{target.full_name}* لمدة *{fmt_timedelta(duration)}*\n"
+            f"🔇 تم تكتيف *{target.full_name}* لمدة *{fmt_timedelta(duration)}*\n"
             f"· الكتف ينتهي: *{fmt_time(until.isoformat())}*\n\n"
             f"_قول \"فكه يا بوت\" وأنت رادّ على أي رسالته عشان تفكه بدري_",
             parse_mode=ParseMode.MARKDOWN,
