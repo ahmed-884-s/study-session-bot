@@ -57,21 +57,21 @@ BREAK_OVER = [
 ]
 
 DELETE_MESSAGES = [
-    "ياض حسّ على دمك واقفل بقا 😒",
+    "ياض حسّ على دمك واقفل بقا 😒📵",
     "تم اتخاذ الإجراءات القانونية ضد الرسالة بنجاح ⚖️",
-    "سيب التليفون في حاله وكمل يا ابني، متتعبناش معاك",
-    "هو إحنا ناقصين تشتت؟ الرسالة راحت، ركّز الله يكرمك",
-    "يا معلم، المنهج مش هيخلص نفسه بنفسه",
-    "كفاية عبث… الكتاب بيعيط في الركن",
+    "سيب التليفون في حاله وكمل يا ابني، متتعبناش معاك 😤",
+    "هو إحنا ناقصين تشتت؟ الرسالة راحت، ركّز الله يكرمك 🙏",
+    "يا معلم، المنهج مش هيخلص نفسه بنفسه 📖",
+    "كفاية عبث… الكتاب بيعيط في الركن 😢",
     "تم القبض على رسالتك بتهمة إزعاج المذاكرين 🚔",
-    "اكتب بعدين براحتك، دلوقتي العب دور الطالب المجتهد",
-    "إحنا في سيشن مذاكرة مش سهرة عائلية",
-    "لو فتحت الكتاب زي ما فتحت الشات كان زمانك خلصت المنهج 15 مرة",
-    "الرسالة في ذمة الله… وأنت لسه عليك باب كامل",
-    "كل مرة تبعت رسالة، في ورقة امتحان هناك بتضحك عليك",
+    "اكتب بعدين براحتك، دلوقتي العب دور الطالب المجتهد 🎭",
+    "إحنا في سيشن مذاكرة مش سهرة عائلية 🫠",
+    "لو فتحت الكتاب زي ما فتحت الشات كان زمانك خلصت المنهج 15 مرة 📚",
+    "الرسالة في ذمة الله… وأنت لسه عليك باب كامل 😶",
+    "كل مرة تبعت رسالة، في ورقة امتحان هناك بتضحك عليك 📝😈",
     "النظام رصد محاولة فشل دراسي وتم التعامل معها 🤖",
-    "تم مسح الرسالة حفاظًا على ما تبقى من مستقبلك الدراسي",
-    "اقفل الشات وافتح مستقبلك بقا يبني",
+    "تم مسح الرسالة حفاظًا على ما تبقى من مستقبلك الدراسي 🎓",
+    "اقفل الشات وافتح مستقبلك بقا يبني 🚀",
 ]
 
 # ── Data ───────────────────────────────────────────────────────────────────
@@ -236,24 +236,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📚 *StudyLock Bot*\n"
         "_بوت لتنظيم جلسات المذاكرة في المجموعات_\n\n"
         "*السيشن:*\n"
-        "`/study 1h` — ابدأ سيشن\n"
-        "`/study 1h30m الرياضيات` — مع موضوع\n"
-        "`/pomodoro` أو `/pomodoro 6` — بومودورو\n"
-        "`/join` — انضم لأي سيشن شغالة\n"
-        "`/break 10` — استراحة \\(أو /break بس = 10 دقايق\\)\n"
-        "`/back` — رجوع بدري من الاستراحة\n"
-        "`/end` — اخرج من السيشن\n"
-        "`/status` — حالة السيشن\n\n"
+        "/study 1h — ابدأ سيشن\n"
+        "/study 1h30m الرياضيات — مع موضوع\n"
+        "/pomodoro أو /pomodoro 6 — بومودورو\n"
+        "/join — انضم لأي سيشن شغالة\n"
+        "/break 10 — استراحة (أو /break بس = 10 دقايق)\n"
+        "/back — رجوع بدري من الاستراحة\n"
+        "/end — اخرج من السيشن\n"
+        "/status — حالة السيشن\n\n"
         "*إحصائيات:*\n"
-        "`/stats` — إحصائياتك\n"
-        "`/goal 2h` — هدفك اليومي\n"
-        "`/leaderboard` — الترتيب الكلي\n"
-        "`/weekly` — ترتيب الأسبوع\n"
-        "`/badges` — شاراتك\n\n"
+        "/stats — إحصائياتك\n"
+        "/goal 2h — هدفك اليومي\n"
+        "/leaderboard — الترتيب الكلي\n"
+        "/weekly — ترتيب الأسبوع\n"
+        "/badges — شاراتك\n\n"
         "*للأدمن:*\n"
-        "`/reset` — تنظيف السيشنات\n\n"
+        "/reset — تنظيف السيشنات\n\n"
         "_ضيفني في المجموعة واعملني أدمن!_",
-        parse_mode=ParseMode.MARKDOWN_V2,
+        parse_mode=ParseMode.MARKDOWN,
     )
 
 # ── /study ─────────────────────────────────────────────────────────────────
@@ -325,7 +325,7 @@ async def _create_session(update, context, chat_id, user, duration, topic,
     save_data(data)
 
     topic_line = f"\nالموضوع: *{topic}*" if topic else ""
-    header = f"🍅 *سيشن بومودورو*\nالدورات: *{cycles}* × \\(25د مذاكرة \\+ 5د استراحة\\)" if pomodoro else "📚 *سيشن مذاكرة*"
+    header = f"🍅 *سيشن بومودورو*\nالدورات: *{cycles}* × (25د مذاكرة + 5د استراحة)" if pomodoro else "📚 *سيشن مذاكرة*"
 
     keyboard = [[InlineKeyboardButton("✋ انضم", callback_data=f"join_{chat_id}_{session_id}")]]
     msg = await update.message.reply_text(
@@ -397,8 +397,7 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── Join button callback ───────────────────────────────────────────────────
 async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-    user = query.from_user
+    user  = query.from_user
     _, chat_id, session_id = query.data.split("_", 2)
 
     sessions = data["sessions"].get(chat_id, {})
@@ -418,8 +417,6 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     get_stats(uid)["sessions_joined"] += 1
     save_data(data)
 
-    await query.answer("تمام أنت انضميت دلوقتي ✅", show_alert=True)
-
     names      = [p["name"] for p in session["participants"].values()]
     topic_line = f"\nالموضوع: *{session['topic']}*" if session.get("topic") else ""
     state_text = "بتستنى" if session["state"] == "waiting" else "شغالة"
@@ -436,6 +433,8 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     except TelegramError:
         pass
+
+    await query.answer("تمام أنت انضميت دلوقتي ✅", show_alert=True)
 
 # ── Start session job ──────────────────────────────────────────────────────
 async def start_session_job(context: ContextTypes.DEFAULT_TYPE):
@@ -458,21 +457,43 @@ async def start_session_job(context: ContextTypes.DEFAULT_TYPE):
     topic_line = f"\nالموضوع: *{session['topic']}*" if session.get("topic") else ""
     keyboard   = [[InlineKeyboardButton("✋ انضم", callback_data=f"join_{chat_id}_{session_id}")]]
 
-    if old_pin := session.get("pinned_message_id"):
-        await unpin_msg(context.bot, chat_int, old_pin)
+    # تعديل رسالة الـ waiting بدل إرسال رسالة جديدة
+    old_pin = session.get("pinned_message_id")
+    edited  = False
+    if old_pin:
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_int,
+                message_id=old_pin,
+                text=(
+                    f"🔒 *السيشن بدأت!*\n\n"
+                    f"المشاركين: {', '.join(names)}\n"
+                    f"المدة: *{fmt_duration(session['duration'])}*{topic_line}\n"
+                    f"تنتهي: *{fmt_time(end.isoformat())}*\n\n"
+                    f"_الرسايل هتتمسح — ركز! ممكن تنضم لسه_ 👇"
+                ),
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+            edited = True
+            session["active_pinned_message_id"] = old_pin
+        except TelegramError:
+            pass
 
-    sent = await context.bot.send_message(
-        chat_int,
-        f"🔒 *السيشن بدأت!*\n\n"
-        f"المشاركين: {', '.join(names)}\n"
-        f"المدة: *{fmt_duration(session['duration'])}*{topic_line}\n"
-        f"تنتهي: *{fmt_time(end.isoformat())}*\n\n"
-        f"_الرسايل هتتمسح — ركز! ممكن تنضم لسه_ 👇",
-        parse_mode=ParseMode.MARKDOWN,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-    await pin_msg(context.bot, chat_int, sent.message_id)
-    session["active_pinned_message_id"] = sent.message_id
+    if not edited:
+        sent = await context.bot.send_message(
+            chat_int,
+            f"🔒 *السيشن بدأت!*\n\n"
+            f"المشاركين: {', '.join(names)}\n"
+            f"المدة: *{fmt_duration(session['duration'])}*{topic_line}\n"
+            f"تنتهي: *{fmt_time(end.isoformat())}*\n\n"
+            f"_الرسايل هتتمسح — ركز! ممكن تنضم لسه_ 👇",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+        await pin_msg(context.bot, chat_int, sent.message_id)
+        session["active_pinned_message_id"] = sent.message_id
+
     save_data(data)
 
     dur = session["duration"]
