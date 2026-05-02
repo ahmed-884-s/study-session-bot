@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, ContextTypes, filters
@@ -236,22 +236,22 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📚 *StudyLock Bot*\n"
         "_بوت لتنظيم جلسات المذاكرة في المجموعات_\n\n"
         "*السيشن:*\n"
-        "/study 1h — ابدأ سيشن\n"
-        "/study 1h30m الرياضيات — مع موضوع\n"
-        "/pomodoro أو /pomodoro 6 — بومودورو\n"
-        "/join — انضم لأي سيشن شغالة\n"
-        "/break 10 — استراحة (أو /break بس = 10 دقايق)\n"
-        "/back — رجوع بدري من الاستراحة\n"
-        "/end — اخرج من السيشن\n"
-        "/status — حالة السيشن\n\n"
+        "· /study 1h — ابدأ سيشن\n"
+        "· /study 1h30m الرياضيات — مع موضوع\n"
+        "· /pomodoro أو /pomodoro 6 — بومودورو\n"
+        "· /join — انضم لأي سيشن شغالة\n"
+        "· /break 10 — استراحة (أو /break بس = 10 دقايق)\n"
+        "· /back — رجوع بدري من الاستراحة\n"
+        "· /end — اخرج من السيشن\n"
+        "· /status — حالة السيشن\n\n"
         "*إحصائيات:*\n"
-        "/stats — إحصائياتك\n"
-        "/goal 2h — هدفك اليومي\n"
-        "/leaderboard — الترتيب الكلي\n"
-        "/weekly — ترتيب الأسبوع\n"
-        "/badges — شاراتك\n\n"
+        "· /stats — إحصائياتك\n"
+        "· /goal 2h — هدفك اليومي\n"
+        "· /leaderboard — الترتيب الكلي\n"
+        "· /weekly — ترتيب الأسبوع\n"
+        "· /badges — شاراتك\n\n"
         "*للأدمن:*\n"
-        "/reset — تنظيف السيشنات\n\n"
+        "· /reset — تنظيف السيشنات\n\n"
         "_ضيفني في المجموعة واعملني أدمن!_",
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -329,11 +329,11 @@ async def _create_session(update, context, chat_id, user, duration, topic,
 
     keyboard = [[InlineKeyboardButton("✋ انضم", callback_data=f"join_{chat_id}_{session_id}")]]
     msg = await update.message.reply_text(
-        f"{header}\n\n"
-        f"بدأها: {user.full_name}\n"
-        f"المدة: *{fmt_duration(duration)}*"
+        f"{header}\n"
+        f"· بدأها: {user.full_name}\n"
+        f"· المدة: *{fmt_duration(duration)}*"
         f"{topic_line}\n"
-        f"المشاركين: 1\n\n"
+        f"· المشاركين: 1\n\n"
         f"_السيشن هتبدأ على طول — اضغط للانضمام_ 👇",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -387,10 +387,10 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state_text = "بتستنى" if target["state"] == "waiting" else "شغالة"
 
     await update.message.reply_text(
-        f"✅ *{user.full_name}* انضم!\n\n"
-        f"المدة: *{fmt_duration(target['duration'])}*{topic_line}\n"
-        f"الحالة: {state_text}\n"
-        f"المشاركين ({len(names)}): {', '.join(names)}",
+        f"✅ *{user.full_name}* انضم!\n"
+        f"· المدة: *{fmt_duration(target['duration'])}*{topic_line}\n"
+        f"· الحالة: {state_text}\n"
+        f"· المشاركين ({len(names)}): {', '.join(names)}",
         parse_mode=ParseMode.MARKDOWN,
     )
 
@@ -523,6 +523,13 @@ async def start_session_job(context: ContextTypes.DEFAULT_TYPE):
             name=f"warn_{chat_id}_{session_id}",
         )
 
+    # countdown — تحديث الرسالة المثبتة كل دقيقة
+    context.job_queue.run_repeating(
+        countdown_job, interval=60, first=60,
+        data={"chat_id": chat_id, "session_id": session_id, "chat_int": chat_int},
+        name=f"countdown_{chat_id}_{session_id}",
+    )
+
     # نهاية السيشن
     context.job_queue.run_once(
         end_session_job, when=dur * 60,
@@ -546,6 +553,67 @@ async def send_warning_job(context: ContextTypes.DEFAULT_TYPE):
         "⏳ *باقي 5 دقائق!* كمّل على آخرها 💪",
         parse_mode=ParseMode.MARKDOWN,
     )
+
+# ── Countdown (edit pinned message every minute) ───────────────────────────
+async def countdown_job(context: ContextTypes.DEFAULT_TYPE):
+    d          = context.job.data
+    chat_id    = d["chat_id"]
+    session_id = d["session_id"]
+    chat_int   = d["chat_int"]
+
+    sessions = data["sessions"].get(chat_id, {})
+    session  = sessions.get(session_id)
+    if not session or session["state"] != "active":
+        context.job.schedule_removal()
+        return
+
+    try:
+        end_dt = datetime.fromisoformat(session["end_time"])
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=TZ)
+        rem = (end_dt - now()).total_seconds()
+        if rem <= 0:
+            context.job.schedule_removal()
+            return
+        rem_min = int(rem // 60)
+        rem_sec = int(rem % 60)
+        rem_str = f"{rem_min}د {rem_sec:02d}ث" if rem_min else f"{rem_sec}ث"
+    except Exception:
+        return
+
+    pin_id = session.get("active_pinned_message_id")
+    if not pin_id:
+        return
+
+    names      = [p["name"] for p in session["participants"].values()]
+    breaks     = session.get("breaks", {})
+    topic_line = f"\n· الموضوع: *{session['topic']}*" if session.get("topic") else ""
+    keyboard   = [[InlineKeyboardButton("✋ انضم", callback_data=f"join_{chat_id}_{session_id}")]]
+
+    studying = [p["name"] for uid, p in session["participants"].items() if uid not in breaks]
+    on_break = [p["name"] for uid, p in session["participants"].items() if uid in breaks]
+
+    participants_text = "\n".join(f"· {n}" for n in studying)
+    if on_break:
+        participants_text += "\n" + "\n".join(f"· {n} ☕" for n in on_break)
+
+    try:
+        await context.bot.edit_message_text(
+            chat_id=chat_int,
+            message_id=pin_id,
+            text=(
+                f"🔒 *السيشن شغالة*\n"
+                f"· المتبقي: *{rem_str}*\n"
+                f"· تنتهي: *{fmt_time(session['end_time'])}*"
+                f"{topic_line}\n\n"
+                f"*المشاركين ({len(names)}):*\n{participants_text}\n\n"
+                f"_الرسايل هتتمسح — ركز! ممكن تنضم لسه_ 👇"
+            ),
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+    except TelegramError:
+        pass  # الرسالة اتعدلت مؤخراً أو مفيش تغيير
 
 # ── Motivation ─────────────────────────────────────────────────────────────
 async def send_motivation_job(context: ContextTypes.DEFAULT_TYPE):
@@ -612,7 +680,7 @@ async def end_session_job(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_int,
         f"✅ *السيشن انتهت!*\n"
-        f"وقت المذاكرة: *{fmt_duration(session['duration'])}*{topic_line}\n\n"
+        f"· وقت المذاكرة: *{fmt_duration(session['duration'])}*{topic_line}\n\n"
         f"*الترتيب:*\n" + "\n".join(lines) +
         badge_text +
         "\n\n_/stats لإحصائياتك — /break لتايمر استراحة_",
@@ -629,6 +697,7 @@ async def check_and_end_empty_session(context, chat_id: str, session_id: str):
             f"motiv_{chat_id}_{session_id}",
             f"halfway_{chat_id}_{session_id}",
             f"warn_{chat_id}_{session_id}",
+            f"countdown_{chat_id}_{session_id}",
         ])
         if pin := session.get("active_pinned_message_id"):
             await unpin_msg(context.bot, int(chat_id), pin)
@@ -688,7 +757,8 @@ async def cmd_break(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"☕ *{user.full_name}* في استراحة *{minutes} دقيقة*\n"
-        f"_ترجع الساعة {fmt_time(break_end.isoformat())} — رسايلك مش هتتمسح_",
+        f"· ترجع الساعة: *{fmt_time(break_end.isoformat())}*\n"
+        f"_رسايلك مش هتتمسح_",
         parse_mode=ParseMode.MARKDOWN,
     )
     context.job_queue.run_once(
@@ -794,23 +864,23 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     end_dt = end_dt.replace(tzinfo=TZ)
                 rem = (end_dt - now()).total_seconds()
                 if rem > 0:
-                    remaining_text = f"\nمتبقي: *{fmt_duration(int(rem // 60))}*"
+                    remaining_text = f"\n· متبقي: *{fmt_duration(int(rem // 60))}*"
             except Exception:
                 pass
 
         lines = []
         for uid, pinfo in session["participants"].items():
             if uid in breaks:
-                lines.append(f"  ☕ {pinfo['name']} — استراحة (ترجع {fmt_time(breaks[uid]['end'])})")
+                lines.append(f"· {pinfo['name']} ☕ — استراحة (ترجع {fmt_time(breaks[uid]['end'])})")
             else:
-                lines.append(f"  📖 {pinfo['name']} — بيذاكر")
+                lines.append(f"· {pinfo['name']} — بيذاكر 📖")
 
         msg = (
             f"*السيشن — {state_text}*\n"
-            f"المدة: *{fmt_duration(session['duration'])}*{topic_line}"
+            f"· المدة: *{fmt_duration(session['duration'])}*{topic_line}"
         )
         if session.get("end_time"):
-            msg += f"\nتنتهي: *{fmt_time(session['end_time'])}*"
+            msg += f"\n· تنتهي: *{fmt_time(session['end_time'])}*"
         msg += remaining_text
         msg += f"\n\n*المشاركين ({len(lines)}):*\n" + "\n".join(lines)
         await update.message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
@@ -831,16 +901,16 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pct     = min(100, int((daily / goal) * 100))
         filled  = pct // 10
         bar     = "█" * filled + "░" * (10 - filled)
-        goal_text = f"\n\nالهدف اليومي: [{bar}] {pct}%\n_{fmt_duration(daily)} من أصل {fmt_duration(goal)}_"
+        goal_text = f"\n\n*الهدف اليومي:* [{bar}] {pct}%\n_مذاكرت {fmt_duration(daily)} من أصل {fmt_duration(goal)}_"
 
     await update.message.reply_text(
         f"📊 *إحصائياتك*\n\n"
-        f"وقت المذاكرة: *{h}س {m}د*\n"
-        f"سيشنات اكتملت: *{stats['sessions_completed']}*\n"
-        f"سلسلة الأيام: *{streak}* (أعلى: *{max_streak}*)\n"
-        f"النقاط: *{stats.get('points', 0)}*\n"
-        f"آخر يوم: *{stats.get('last_study_date') or '—'}*\n"
-        f"الشارات: {badge_txt}"
+        f"· وقت المذاكرة: *{h}س {m}د*\n"
+        f"· سيشنات اكتملت: *{stats['sessions_completed']}*\n"
+        f"· سلسلة الأيام: *{streak}* (أعلى: *{max_streak}*)\n"
+        f"· النقاط: *{stats.get('points', 0)}*\n"
+        f"· آخر يوم: *{stats.get('last_study_date') or '—'}*\n"
+        f"· الشارات: {badge_txt}"
         f"{goal_text}",
         parse_mode=ParseMode.MARKDOWN,
     )
@@ -920,12 +990,119 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cancel_jobs(context.job_queue, [
             f"start_{chat_id}_{s_id}", f"end_{chat_id}_{s_id}",
             f"motiv_{chat_id}_{s_id}", f"halfway_{chat_id}_{s_id}",
-            f"warn_{chat_id}_{s_id}",
+            f"warn_{chat_id}_{s_id}", f"countdown_{chat_id}_{s_id}",
         ])
 
     del data["sessions"][chat_id]
     save_data(data)
     await update.message.reply_text("تم تنظيف كل السيشنات ✅")
+
+# ── Mute/Unmute (admin reply) ──────────────────────────────────────────────
+
+MUTE_PATTERN  = re.compile(r'كتفه يا بوت(?:\s+لمدة\s*(.+))?', re.IGNORECASE)
+UNMUTE_PATTERN = re.compile(r'فكه يا بوت', re.IGNORECASE)
+
+def parse_mute_duration(text: str | None) -> timedelta | None:
+    """يحول النص لـ timedelta — مثلاً: ساعة، يوم، 3 ساعات، 30 دقيقة، أسبوع"""
+    if not text:
+        return timedelta(hours=1)  # افتراضي ساعة
+    text = text.strip()
+    patterns = [
+        (r'(\d+)\s*دقيق[ةه]?', lambda m: timedelta(minutes=int(m.group(1)))),
+        (r'(\d+)\s*ساع[ةه]?',  lambda m: timedelta(hours=int(m.group(1)))),
+        (r'(\d+)\s*يوم',       lambda m: timedelta(days=int(m.group(1)))),
+        (r'(\d+)\s*أسبوع',     lambda m: timedelta(weeks=int(m.group(1)))),
+        (r'(\d+)\s*شهر',       lambda m: timedelta(days=int(m.group(1)) * 30)),
+        (r'(\d+)\s*سن[ةه]',    lambda m: timedelta(days=int(m.group(1)) * 365)),
+        (r'دقيق[ةه]',          lambda m: timedelta(minutes=1)),
+        (r'ساع[ةه]',           lambda m: timedelta(hours=1)),
+        (r'يوم',               lambda m: timedelta(days=1)),
+        (r'أسبوع',             lambda m: timedelta(weeks=1)),
+        (r'شهر',               lambda m: timedelta(days=30)),
+    ]
+    for pattern, fn in patterns:
+        m = re.search(pattern, text)
+        if m:
+            return fn(m)
+    return timedelta(hours=1)
+
+def fmt_timedelta(td: timedelta) -> str:
+    total = int(td.total_seconds())
+    days, rem = divmod(total, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, _ = divmod(rem, 60)
+    parts = []
+    if days:    parts.append(f"{days} يوم")
+    if hours:   parts.append(f"{hours} ساعة")
+    if minutes: parts.append(f"{minutes} دقيقة")
+    return " و ".join(parts) if parts else "ساعة"
+
+async def handle_mute_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or update.effective_chat.type == "private":
+        return
+
+    text = update.message.text or ""
+    user = update.effective_user
+    chat = update.effective_chat
+
+    # تحقق إن المرسل أدمن
+    if not await is_admin(context.bot, chat.id, user.id):
+        return
+
+    # ── فك الكتف ──────────────────────────────────────────────────────────
+    if UNMUTE_PATTERN.search(text):
+        reply = update.message.reply_to_message
+        if not reply:
+            await update.message.reply_text("رد على رسالة الشخص اللي عايز تفكه.")
+            return
+        target = reply.from_user
+        try:
+            await context.bot.restrict_chat_member(
+                chat.id, target.id,
+                permissions=ChatPermissions(
+                    can_send_messages=True,
+                    can_send_polls=True,
+                    can_send_other_messages=True,
+                    can_add_web_page_previews=True,
+                    can_invite_users=True,
+                ),
+            )
+            await update.message.reply_text(
+                f"✅ تم فك الكتف عن *{target.full_name}*",
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except TelegramError as e:
+            await update.message.reply_text(f"مش قادر أفك الكتف: {e}")
+        return
+
+    # ── كتف ───────────────────────────────────────────────────────────────
+    m = MUTE_PATTERN.search(text)
+    if not m:
+        return
+
+    reply = update.message.reply_to_message
+    if not reply:
+        await update.message.reply_text("رد على رسالة الشخص اللي عايز تكتفه.")
+        return
+
+    target   = reply.from_user
+    duration = parse_mute_duration(m.group(1))
+    until    = now() + duration
+
+    try:
+        await context.bot.restrict_chat_member(
+            chat.id, target.id,
+            permissions=ChatPermissions(can_send_messages=False),
+            until_date=until,
+        )
+        await update.message.reply_text(
+            f"🔇 تم كتف *{target.full_name}* لمدة *{fmt_timedelta(duration)}*\n"
+            f"· الكتف ينتهي: *{fmt_time(until.isoformat())}*\n\n"
+            f"_قول \"فكه يا بوت\" وأنت رادّ على أي رسالته عشان تفكه بدري_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+    except TelegramError as e:
+        await update.message.reply_text(f"مش قادر أكتف: {e}")
 
 # ── Guard messages ─────────────────────────────────────────────────────────
 async def guard_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -943,6 +1120,9 @@ async def guard_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             continue
         if uid in session.get("breaks", {}):
             continue
+        # الأدمن مش بنمسح رسايله
+        if await is_admin(context.bot, update.effective_chat.id, int(uid)):
+            break
         try:
             await update.message.delete()
             add_points(uid, -POINTS_PENALTY)
@@ -1015,6 +1195,7 @@ def main():
         app.add_handler(CommandHandler(cmd, fn))
 
     app.add_handler(CallbackQueryHandler(join_callback, pattern=r"^join_"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_mute_commands))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, guard_messages))
 
     async def post_init(application):
