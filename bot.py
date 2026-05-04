@@ -185,21 +185,30 @@ def check_and_award_badges(user_id: str) -> list[str]:
 def build_leaderboard_text(title: str, sort_key: str = "points") -> str:
     if not data["stats"]:
         return "لسه مفيش بيانات. ابدأ سيشن مذاكرة."
-    users  = sorted(data["stats"].items(), key=lambda x: x[1].get(sort_key, 0), reverse=True)[:10]
+
+    users = [
+        (uid, s) for uid, s in data["stats"].items()
+        if s.get(sort_key, 0) > 0
+    ]
+    users.sort(key=lambda x: x[1].get(sort_key, 0), reverse=True)
+    users = users[:10]
+
+    if not users:
+        return f"*{title}*\n\nلسه مفيش بيانات كافية."
+
     medals = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
     lines  = []
     for i, (uid, s) in enumerate(users):
-        pts = s.get(sort_key, 0)
-        if pts == 0:
-            continue
+        pts    = s.get(sort_key, 0)
         name   = s.get("name") or s.get("username") or f"مستخدم {uid}"
         streak = data["streaks"].get(uid, {}).get("streak", 0)
         fire   = f" 🔥{streak}" if streak > 1 else ""
         mins   = s.get("weekly_minutes" if sort_key == "weekly_points" else "total_minutes", 0)
         h, m   = divmod(mins, 60)
-        lines.append(f"{medals[i]} *{name}* — {pts} نقطة ({h}س {m}د){fire}")
-    if not lines:
-        return f"*{title}*\n\nلسه مفيش بيانات كافية."
+        time_str = f"{h}س {m}د" if h else f"{m}د"
+        medal  = medals[i] if i < len(medals) else "🏅"
+        lines.append(f"{medal} *{name}* — {pts} نقطة · {time_str}{fire}")
+
     return f"*{title}*\n\n" + "\n".join(lines) + "\n\n_بيتحدث تلقائياً_"
 
 # ── Pin helpers ────────────────────────────────────────────────────────────
@@ -314,7 +323,7 @@ async def _create_session(update, context, chat_id, user, duration, topic,
         "state": "waiting",
         "duration": duration, "topic": topic,
         "started_by": uid,
-        "participants": {uid: {"name": user.full_name, "username": user.username or ""}},
+        "participants": {uid: {"name": user.full_name, "username": user.username or "", "join_time": None}},
         "start_time": None, "end_time": None, "breaks": {},
         "pomodoro": pomodoro, "pomo_cycles": cycles,
         "pomo_work": work, "pomo_break": brk, "pomo_cycle": 0,
@@ -377,10 +386,14 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("انت شارك في السيشن أصلاً! 👍")
         return
 
-    target["participants"][uid] = {"name": user.full_name, "username": user.username or ""}
+    target["participants"][uid] = {"name": user.full_name, "username": user.username or "", "join_time": now().isoformat() if target["state"] == "active" else None}
     update_user_info(uid, user.full_name, user.username or "")
     get_stats(uid)["sessions_joined"] += 1
     save_data(data)
+
+    # تحديث فوري للرسالة المثبتة
+    if target["state"] == "active":
+        await update_pinned_message(context.bot, chat_id, target_sid, update.effective_chat.id)
 
     names      = [p["name"] for p in target["participants"].values()]
     topic_line = f"\nالموضوع: *{target['topic']}*" if target.get("topic") else ""
@@ -412,10 +425,14 @@ async def join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("انت شارك أصلاً! 👍", show_alert=True)
         return
 
-    session["participants"][uid] = {"name": user.full_name, "username": user.username or ""}
+    session["participants"][uid] = {"name": user.full_name, "username": user.username or "", "join_time": now().isoformat() if session["state"] == "active" else None}
     update_user_info(uid, user.full_name, user.username or "")
     get_stats(uid)["sessions_joined"] += 1
     save_data(data)
+
+    # تحديث فوري للرسالة المثبتة
+    if session["state"] == "active":
+        await update_pinned_message(context.bot, chat_id, session_id, int(chat_id))
 
     names      = [p["name"] for p in session["participants"].values()]
     topic_line = f"\nالموضوع: *{session['topic']}*" if session.get("topic") else ""
@@ -451,6 +468,12 @@ async def start_session_job(context: ContextTypes.DEFAULT_TYPE):
     start = now()
     end   = start + timedelta(minutes=session["duration"])
     session.update(state="active", start_time=start.isoformat(), end_time=end.isoformat())
+
+    # سجّل وقت الانضمام للمؤسس (كان موجود من البداية)
+    for uid in session["participants"]:
+        if session["participants"][uid].get("join_time") is None:
+            session["participants"][uid]["join_time"] = start.isoformat()
+
     save_data(data)
 
     names      = [p["name"] for p in session["participants"].values()]
@@ -523,9 +546,9 @@ async def start_session_job(context: ContextTypes.DEFAULT_TYPE):
             name=f"warn_{chat_id}_{session_id}",
         )
 
-    # countdown — تحديث الرسالة المثبتة كل دقيقة
+    # countdown — تحديث الرسالة المثبتة كل 30 ثانية
     context.job_queue.run_repeating(
-        countdown_job, interval=60, first=60,
+        countdown_job, interval=30, first=30,
         data={"chat_id": chat_id, "session_id": session_id, "chat_int": chat_int},
         name=f"countdown_{chat_id}_{session_id}",
     )
@@ -554,7 +577,7 @@ async def send_warning_job(context: ContextTypes.DEFAULT_TYPE):
         parse_mode=ParseMode.MARKDOWN,
     )
 
-# ── Countdown (edit pinned message every minute) ───────────────────────────
+# ── Countdown (edit pinned message every 30s) ──────────────────────────────
 async def countdown_job(context: ContextTypes.DEFAULT_TYPE):
     d          = context.job.data
     chat_id    = d["chat_id"]
@@ -571,9 +594,32 @@ async def countdown_job(context: ContextTypes.DEFAULT_TYPE):
         end_dt = datetime.fromisoformat(session["end_time"])
         if end_dt.tzinfo is None:
             end_dt = end_dt.replace(tzinfo=TZ)
+        if (end_dt - now()).total_seconds() <= 0:
+            context.job.schedule_removal()
+            return
+    except Exception:
+        return
+
+    await update_pinned_message(context.bot, chat_id, session_id, chat_int)
+
+# ── Shared: update pinned message instantly ────────────────────────────────
+async def update_pinned_message(bot, chat_id: str, session_id: str, chat_int: int):
+    """يعدّل رسالة الـ pin فوراً بأحدث بيانات السيشن"""
+    sessions = data["sessions"].get(chat_id, {})
+    session  = sessions.get(session_id)
+    if not session or session["state"] != "active":
+        return
+
+    pin_id = session.get("active_pinned_message_id")
+    if not pin_id:
+        return
+
+    try:
+        end_dt = datetime.fromisoformat(session["end_time"])
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=TZ)
         rem = (end_dt - now()).total_seconds()
         if rem <= 0:
-            context.job.schedule_removal()
             return
         rem_min = int(rem // 60)
         rem_sec = int(rem % 60)
@@ -581,11 +627,6 @@ async def countdown_job(context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         return
 
-    pin_id = session.get("active_pinned_message_id")
-    if not pin_id:
-        return
-
-    names      = [p["name"] for p in session["participants"].values()]
     breaks     = session.get("breaks", {})
     topic_line = f"\n· الموضوع: *{session['topic']}*" if session.get("topic") else ""
     keyboard   = [[InlineKeyboardButton("✋ انضم", callback_data=f"join_{chat_id}_{session_id}")]]
@@ -593,27 +634,28 @@ async def countdown_job(context: ContextTypes.DEFAULT_TYPE):
     studying = [p["name"] for uid, p in session["participants"].items() if uid not in breaks]
     on_break = [p["name"] for uid, p in session["participants"].items() if uid in breaks]
 
-    participants_text = "\n".join(f"· {n}" for n in studying)
-    if on_break:
-        participants_text += "\n" + "\n".join(f"· {n} ☕" for n in on_break)
+    parts = [f"· {n}" for n in studying]
+    parts += [f"· {n} ☕" for n in on_break]
+    participants_text = "\n".join(parts)
+    total = len(session["participants"])
 
     try:
-        await context.bot.edit_message_text(
+        await bot.edit_message_text(
             chat_id=chat_int,
             message_id=pin_id,
             text=(
                 f"🔒 *السيشن شغالة*\n"
-                f"· المتبقي: *{rem_str}*\n"
+                f"· متبقي: *{rem_str}*\n"
                 f"· تنتهي: *{fmt_time(session['end_time'])}*"
                 f"{topic_line}\n\n"
-                f"*المشاركين ({len(names)}):*\n{participants_text}\n\n"
+                f"*المشاركين ({total}):*\n{participants_text}\n\n"
                 f"_الرسايل هتتمسح — ركز! ممكن تنضم لسه_ 👇"
             ),
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
     except TelegramError:
-        pass  # الرسالة اتعدلت مؤخراً أو مفيش تغيير
+        pass
 
 # ── Motivation ─────────────────────────────────────────────────────────────
 async def send_motivation_job(context: ContextTypes.DEFAULT_TYPE):
@@ -636,46 +678,83 @@ async def end_session_job(context: ContextTypes.DEFAULT_TYPE):
     if not session:
         return
 
-    earned         = session["duration"] * POINTS_PER_MINUTE
+    session_end    = now()
     new_badges_all = []
+    participant_results = []  # [(name, earned_minutes, earned_pts, total_pts, streak)]
+
+    try:
+        session_start_dt = datetime.fromisoformat(session["start_time"])
+        if session_start_dt.tzinfo is None:
+            session_start_dt = session_start_dt.replace(tzinfo=TZ)
+    except Exception:
+        session_start_dt = session_end - timedelta(minutes=session["duration"])
 
     for uid, pinfo in session["participants"].items():
+        # حساب الوقت الفعلي بناءً على وقت الانضمام
+        join_str = pinfo.get("join_time")
+        if join_str:
+            try:
+                join_dt = datetime.fromisoformat(join_str)
+                if join_dt.tzinfo is None:
+                    join_dt = join_dt.replace(tzinfo=TZ)
+            except Exception:
+                join_dt = session_start_dt
+        else:
+            join_dt = session_start_dt
+
+        actual_minutes = max(1, int((session_end - join_dt).total_seconds() // 60))
+        # لا يتجاوز مدة السيشن الكلية
+        actual_minutes = min(actual_minutes, session["duration"])
+        earned_pts     = actual_minutes * POINTS_PER_MINUTE
+
         s = get_stats(uid)
-        s["total_minutes"]      += session["duration"]
-        s["weekly_minutes"]      = s.get("weekly_minutes", 0) + session["duration"]
-        s["daily_minutes"]       = s.get("daily_minutes", 0) + session["duration"]
+        s["total_minutes"]      += actual_minutes
+        s["weekly_minutes"]      = s.get("weekly_minutes", 0) + actual_minutes
+        s["daily_minutes"]       = s.get("daily_minutes", 0) + actual_minutes
         s["sessions_completed"] += 1
         s["last_study_date"]     = now().date().isoformat()
-        add_points(uid, earned)
+        add_points(uid, earned_pts)
         update_streak(uid)
         nb = check_and_award_badges(uid)
         if nb:
             new_badges_all.append((pinfo["name"], nb))
 
+        streak = data["streaks"].get(uid, {}).get("streak", 0)
+        participant_results.append({
+            "name":    pinfo["name"],
+            "minutes": actual_minutes,
+            "earned":  earned_pts,
+            "total":   s.get("points", 0),
+            "streak":  streak,
+        })
+
     session["state"] = "ended"
     save_data(data)
+
+    cancel_jobs(context.job_queue, [f"countdown_{chat_id}_{session_id}"])
 
     if pin := session.get("active_pinned_message_id"):
         await unpin_msg(context.bot, chat_int, pin)
 
-    medals       = ["🥇", "🥈", "🥉"] + ["🏅"] * 20
-    sorted_parts = sorted(
-        session["participants"].items(),
-        key=lambda x: get_stats(x[0]).get("points", 0), reverse=True
-    )
+    # ترتيب حسب الوقت الفعلي (الأكتر مذاكرة أول)
+    participant_results.sort(key=lambda x: x["minutes"], reverse=True)
+    medals = ["🥇", "🥈", "🥉"] + ["🏅"] * 20
+
     lines = []
-    for i, (uid, pinfo) in enumerate(sorted_parts):
-        pts    = get_stats(uid).get("points", 0)
-        streak = data["streaks"].get(uid, {}).get("streak", 0)
-        fire   = f" 🔥{streak}" if streak > 1 else ""
-        lines.append(f"{medals[i]} {pinfo['name']} — +{earned} نقطة (المجموع: {pts}){fire}")
+    for i, r in enumerate(participant_results):
+        fire     = f" 🔥{r['streak']}" if r["streak"] > 1 else ""
+        time_str = fmt_duration(r["minutes"])
+        lines.append(
+            f"{medals[i]} *{r['name']}*{fire}\n"
+            f"   · مذاكر: {time_str} — +{r['earned']} نقطة (المجموع: {r['total']})"
+        )
 
     badge_text = ""
     if new_badges_all:
-        bl = [f"*{n}* فتح: {' '.join(b)}" for n, b in new_badges_all]
+        bl = [f"· *{n}* فتح: {' '.join(b)}" for n, b in new_badges_all]
         badge_text = "\n\n🎖 *شارات جديدة!*\n" + "\n".join(bl)
 
-    topic_line = f"\nالموضوع: *{session['topic']}*" if session.get("topic") else ""
+    topic_line = f"\n· الموضوع: *{session['topic']}*" if session.get("topic") else ""
 
     await context.bot.send_message(
         chat_int,
@@ -755,6 +834,9 @@ async def cmd_break(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_session["breaks"][uid] = {"end": break_end.isoformat(), "duration": minutes, "name": user.full_name}
     save_data(data)
 
+    # تحديث فوري للرسالة المثبتة
+    await update_pinned_message(context.bot, chat_id, target_sid, update.effective_chat.id)
+
     await update.message.reply_text(
         f"☕ *{user.full_name}* في استراحة *{minutes} دقيقة*\n"
         f"· ترجع الساعة: *{fmt_time(break_end.isoformat())}*\n"
@@ -778,6 +860,7 @@ async def end_break_job(context: ContextTypes.DEFAULT_TYPE):
     if s := sessions.get(session_id):
         s.get("breaks", {}).pop(uid, None)
         save_data(data)
+        await update_pinned_message(context.bot, chat_id, session_id, chat_int)
 
     await context.bot.send_message(
         chat_int,
@@ -799,6 +882,9 @@ async def cmd_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cancel_jobs(context.job_queue, [f"break_{chat_id}_{target_sid}_{uid}"])
     sessions[target_sid]["breaks"].pop(uid, None)
     save_data(data)
+
+    # تحديث فوري للرسالة المثبتة
+    await update_pinned_message(context.bot, chat_id, target_sid, update.effective_chat.id)
 
     await update.message.reply_text(
         f"*{update.effective_user.full_name}* رجع بدري — هيا نكمل 💪",
@@ -953,23 +1039,49 @@ async def cmd_weekly(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── /badges ────────────────────────────────────────────────────────────────
 async def cmd_badges(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid    = str(update.effective_user.id)
-    badges = get_stats(uid).get("badges", [])
-    all_b  = [
-        ("🌱 مبتدئ",     "أكمل سيشن واحدة"),
-        ("📚 مذاكر",     "أكمل 5 سيشنات"),
-        ("🏃 مداوم",     "أكمل 20 سيشن"),
-        ("🏆 بطل",       "أكمل 50 سيشن"),
-        ("⏱ ساعة",      "ذاكر ساعة"),
-        ("🕐 10 ساعات",  "ذاكر 10 ساعات"),
-        ("🕑 50 ساعة",   "ذاكر 50 ساعة"),
-        ("🔥 3 أيام",    "سلسلة 3 أيام"),
-        ("🔥🔥 أسبوع",   "سلسلة 7 أيام"),
-        ("🔥🔥🔥 شهر",   "سلسلة 30 يوم"),
-        ("⭐ 100 نقطة",  "اجمع 100 نقطة"),
-        ("💎 1000 نقطة", "اجمع 1000 نقطة"),
+    stats  = get_stats(uid)
+    badges = stats.get("badges", [])
+    streak = data["streaks"].get(uid, {}).get("streak", 0)
+
+    categories = [
+        ("📚 السيشنات", [
+            ("🌱 مبتدئ",  "سيشن واحدة",   stats["sessions_completed"],  1),
+            ("📚 مذاكر",  "5 سيشنات",     stats["sessions_completed"],  5),
+            ("🏃 مداوم",  "20 سيشن",      stats["sessions_completed"], 20),
+            ("🏆 بطل",    "50 سيشن",      stats["sessions_completed"], 50),
+        ]),
+        ("⏱ الوقت", [
+            ("⏱ ساعة",     "ساعة مذاكرة",    stats["total_minutes"],   60),
+            ("🕐 10 ساعات", "10 ساعات",       stats["total_minutes"],  600),
+            ("🕑 50 ساعة",  "50 ساعة",        stats["total_minutes"], 3000),
+        ]),
+        ("🔥 السلاسل", [
+            ("🔥 3 أيام",   "3 أيام متتالية", streak,  3),
+            ("🔥🔥 أسبوع",  "7 أيام",         streak,  7),
+            ("🔥🔥🔥 شهر",  "30 يوم",         streak, 30),
+        ]),
+        ("⭐ النقاط", [
+            ("⭐ 100 نقطة",  "100 نقطة",  stats.get("points", 0),  100),
+            ("💎 1000 نقطة", "1000 نقطة", stats.get("points", 0), 1000),
+        ]),
     ]
-    lines = [f"{'✅' if name in badges else '🔒'} {name} — _{desc}_" for name, desc in all_b]
-    await update.message.reply_text("*شاراتك* 🎖\n\n" + "\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+
+    earned  = sum(1 for b in badges if any(b == name for _, grp in categories for name, *_ in grp))
+    total_b = sum(len(grp) for _, grp in categories)
+    lines   = [f"*شاراتك* 🎖  ({earned}/{total_b})\n"]
+
+    for cat_name, items in categories:
+        lines.append(f"\n*{cat_name}*")
+        for badge_name, desc, current, target in items:
+            if badge_name in badges:
+                lines.append(f"✅ {badge_name}")
+            else:
+                pct   = min(100, int((current / target) * 100))
+                filled = pct // 10
+                bar   = "█" * filled + "░" * (10 - filled)
+                lines.append(f"🔒 {badge_name} — _تحتاج {desc}_\n   `[{bar}]` {pct}%")
+
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
 
 # ── /reset ─────────────────────────────────────────────────────────────────
 async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
