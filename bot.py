@@ -242,7 +242,7 @@ def cancel_jobs(job_queue, prefixes: list[str]):
 # ── /start ─────────────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📚 *StudyLock Bot*\n"
+        "📚 *Study Session Bot*\n"
         "_بوت لتنظيم جلسات المذاكرة في المجموعات_\n\n"
         "*السيشن:*\n"
         "· /study 1h — ابدأ سيشن\n"
@@ -733,8 +733,34 @@ async def end_session_job(context: ContextTypes.DEFAULT_TYPE):
 
     cancel_jobs(context.job_queue, [f"countdown_{chat_id}_{session_id}"])
 
-    if pin := session.get("active_pinned_message_id"):
-        await unpin_msg(context.bot, chat_int, pin)
+    # جمّع كل الـ pin IDs بدون تكرار
+    pins_to_clear = set()
+    for pk in ("active_pinned_message_id", "pinned_message_id"):
+        if pid := session.get(pk):
+            pins_to_clear.add(pid)
+
+    for pid in pins_to_clear:
+        # حاول edit الرسالة عشان تبيّن إنها خلصت
+        try:
+            await context.bot.edit_message_text(
+                "\U0001f512 *السيشن انتهت*",
+                chat_id=chat_int, message_id=pid,
+                parse_mode=ParseMode.MARKDOWN,
+            )
+        except Exception:
+            pass
+        # بعدين امسح أو unpin
+        try:
+            await context.bot.delete_message(chat_int, pid)
+        except Exception:
+            try:
+                await context.bot.unpin_chat_message(chat_int, pid)
+            except Exception:
+                pass
+
+    session["active_pinned_message_id"] = None
+    session["pinned_message_id"]        = None
+    save_data(data)
 
     # ترتيب حسب الوقت الفعلي (الأكتر مذاكرة أول)
     participant_results.sort(key=lambda x: x["minutes"], reverse=True)
@@ -1312,6 +1338,49 @@ def main():
 
     async def post_init(application):
         schedule_recurring_jobs(application)
+        # ── cleanup سيشنات معلقة من قبل restart ──────────────────────────
+        for chat_id, sessions in list(data["sessions"].items()):
+            for session_id in list(sessions.keys()):
+                session = sessions[session_id]
+                state   = session.get("state", "")
+                # أي سيشن مش ended نشوف هل وقتها عدى
+                if state in ("active", "waiting"):
+                    end_str = session.get("end_time")
+                    if end_str:
+                        try:
+                            end_dt = datetime.fromisoformat(end_str)
+                            if end_dt.tzinfo is None:
+                                end_dt = end_dt.replace(tzinfo=TZ)
+                            if now() > end_dt:
+                                # السيشن خلصت وإحنا مش عارفين → امسحها وامسح الـ pin
+                                for pk in ("active_pinned_message_id", "pinned_message_id"):
+                                    pid = session.get(pk)
+                                    if pid:
+                                        try:
+                                            await application.bot.delete_message(int(chat_id), pid)
+                                        except Exception:
+                                            try:
+                                                await application.bot.unpin_chat_message(int(chat_id), pid)
+                                            except Exception:
+                                                pass
+                                session["state"] = "ended"
+                                logger.info(f"Cleaned up stale session {session_id} in chat {chat_id}")
+                        except Exception:
+                            pass
+                # سيشنات ended قديمة تتمسح الـ pin بتاعها لو لسه موجود
+                elif state == "ended":
+                    for pk in ("active_pinned_message_id", "pinned_message_id"):
+                        pid = session.get(pk)
+                        if pid:
+                            try:
+                                await application.bot.delete_message(int(chat_id), pid)
+                            except Exception:
+                                try:
+                                    await application.bot.unpin_chat_message(int(chat_id), pid)
+                                except Exception:
+                                    pass
+                            session[pk] = None
+        save_data(data)
 
     app.post_init = post_init
     logger.info("StudyLock Bot شغال...")
