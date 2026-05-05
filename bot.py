@@ -629,7 +629,14 @@ async def update_pinned_message(bot, chat_id: str, session_id: str, chat_int: in
 
     breaks     = session.get("breaks", {})
     topic_line = f"\n· الموضوع: *{session['topic']}*" if session.get("topic") else ""
-    keyboard   = [[InlineKeyboardButton("✋ انضم", callback_data=f"join_{chat_id}_{session_id}")]]
+    keyboard   = [
+        [InlineKeyboardButton("✋ انضم", callback_data=f"join_{chat_id}_{session_id}")],
+        [
+            InlineKeyboardButton("☕ استراحة 10د", callback_data=f"act_break_{chat_id}_{session_id}_x"),
+            InlineKeyboardButton("▶️ رجعت",        callback_data=f"act_back_{chat_id}_{session_id}_x"),
+            InlineKeyboardButton("🚪 خروج",         callback_data=f"act_end_{chat_id}_{session_id}_x"),
+        ],
+    ]
 
     studying = [p["name"] for uid, p in session["participants"].items() if uid not in breaks]
     on_break = [p["name"] for uid, p in session["participants"].items() if uid in breaks]
@@ -1140,6 +1147,259 @@ async def cmd_reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
 MUTE_PATTERN  = re.compile(r'كتفه يا بوت(?:\s+لمدة\s*(.+))?', re.IGNORECASE)
 UNMUTE_PATTERN = re.compile(r'فكه يا بوت', re.IGNORECASE)
 
+# ── Interactive session wizard ─────────────────────────────────────────────
+# حالات الـ wizard مخزنة في context.chat_data
+# wizard_state: "pick_duration" | "pick_topic"
+# wizard_duration: int (دقايق)
+
+DURATION_OPTIONS = [
+    ("30 دقيقة", 30),
+    ("45 دقيقة", 45),
+    ("1 ساعة",   60),
+    ("1.5 ساعة", 90),
+    ("2 ساعة",   120),
+    ("3 ساعات",  180),
+]
+
+def build_duration_keyboard() -> InlineKeyboardMarkup:
+    rows = []
+    for i in range(0, len(DURATION_OPTIONS), 3):
+        row = [
+            InlineKeyboardButton(label, callback_data=f"wiz_dur_{mins}")
+            for label, mins in DURATION_OPTIONS[i:i+3]
+        ]
+        rows.append(row)
+    rows.append([InlineKeyboardButton("❌ إلغاء", callback_data="wiz_cancel")])
+    return InlineKeyboardMarkup(rows)
+
+def build_topic_keyboard() -> InlineKeyboardMarkup:
+    topics = ["رياضيات", "فيزياء", "كيمياء", "أحياء", "عربي", "إنجليزي", "تاريخ", "جغرافيا", "برمجة", "بدون موضوع"]
+    rows = []
+    for i in range(0, len(topics) - 1, 2):
+        rows.append([
+            InlineKeyboardButton(topics[i],   callback_data=f"wiz_topic_{topics[i]}"),
+            InlineKeyboardButton(topics[i+1], callback_data=f"wiz_topic_{topics[i+1]}"),
+        ])
+    rows.append([InlineKeyboardButton("بدون موضوع ✅", callback_data="wiz_topic_none")])
+    rows.append([InlineKeyboardButton("❌ إلغاء", callback_data="wiz_cancel")])
+    return InlineKeyboardMarkup(rows)
+
+async def handle_start_session_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """لما حد يكتب 'بدء سيشن' في المجموعة"""
+    if update.effective_chat.type == "private":
+        return
+    text = (update.message.text or "").strip()
+    if text != "بدء سيشن":
+        return
+
+    # امسح الـ wizard القديم لو موجود
+    context.chat_data.pop("wizard_state", None)
+    context.chat_data.pop("wizard_duration", None)
+    context.chat_data.pop("wizard_msg_id", None)
+
+    msg = await update.message.reply_text(
+        "📚 *ابدأ سيشن مذاكرة*\n\nاختار مدة السيشن 👇",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_duration_keyboard(),
+    )
+    context.chat_data["wizard_state"]  = "pick_duration"
+    context.chat_data["wizard_msg_id"] = msg.message_id
+    context.chat_data["wizard_user"]   = update.effective_user.id
+
+async def wizard_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يتعامل مع كل callback بيبدأ بـ wiz_"""
+    query = update.callback_query
+    user  = query.from_user
+    data_cb = query.data
+
+    # بس اللي بدأ الـ wizard يقدر يتحكم فيه
+    if context.chat_data.get("wizard_user") != user.id:
+        await query.answer("مش طلبك ده 😅", show_alert=True)
+        return
+
+    await query.answer()
+
+    # ── إلغاء ──────────────────────────────────────────────────────────────
+    if data_cb == "wiz_cancel":
+        context.chat_data.pop("wizard_state", None)
+        context.chat_data.pop("wizard_duration", None)
+        context.chat_data.pop("wizard_msg_id", None)
+        context.chat_data.pop("wizard_user", None)
+        try:
+            await query.edit_message_text("تم الإلغاء ✅")
+        except TelegramError:
+            pass
+        return
+
+    state = context.chat_data.get("wizard_state")
+
+    # ── اختيار المدة ───────────────────────────────────────────────────────
+    if state == "pick_duration" and data_cb.startswith("wiz_dur_"):
+        minutes = int(data_cb.split("_")[-1])
+        context.chat_data["wizard_duration"] = minutes
+        context.chat_data["wizard_state"]    = "pick_topic"
+
+        label = next((l for l, m in DURATION_OPTIONS if m == minutes), f"{minutes} دقيقة")
+        try:
+            await query.edit_message_text(
+                f"📚 *سيشن {label}*\n\nاختار الموضوع 👇",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=build_topic_keyboard(),
+            )
+        except TelegramError:
+            pass
+        return
+
+    # ── اختيار الموضوع ─────────────────────────────────────────────────────
+    if state == "pick_topic" and data_cb.startswith("wiz_topic_"):
+        topic_val = data_cb[len("wiz_topic_"):]
+        topic     = None if topic_val == "none" else topic_val
+        duration  = context.chat_data.get("wizard_duration", 60)
+
+        # نضيف السيشن
+        context.chat_data.pop("wizard_state", None)
+        context.chat_data.pop("wizard_duration", None)
+        context.chat_data.pop("wizard_msg_id", None)
+        context.chat_data.pop("wizard_user", None)
+
+        chat_id    = str(update.effective_chat.id)
+        session_id = f"s{now().strftime('%H%M%S')}{random.randint(100,999)}"
+        sessions   = data["sessions"].setdefault(chat_id, {})
+        uid        = str(user.id)
+
+        sessions[session_id] = {
+            "state": "waiting",
+            "duration": duration, "topic": topic,
+            "started_by": uid,
+            "participants": {uid: {"name": user.full_name, "username": user.username or "", "join_time": None}},
+            "start_time": None, "end_time": None, "breaks": {},
+            "pomodoro": False, "pomo_cycles": 0,
+            "pomo_work": 25, "pomo_break": 5, "pomo_cycle": 0,
+            "pinned_message_id": None, "active_pinned_message_id": None,
+        }
+        update_user_info(uid, user.full_name, user.username or "")
+        get_stats(uid)["sessions_joined"] += 1
+        save_data(data)
+
+        topic_line = f"\nالموضوع: *{topic}*" if topic else ""
+        keyboard   = [[InlineKeyboardButton("✋ انضم", callback_data=f"join_{chat_id}_{session_id}")]]
+
+        try:
+            msg = await query.edit_message_text(
+                f"📚 *سيشن مذاكرة*\n"
+                f"· بدأها: {user.full_name}\n"
+                f"· المدة: *{fmt_duration(duration)}*"
+                f"{topic_line}\n"
+                f"· المشاركين: 1\n\n"
+                f"_السيشن هتبدأ على طول — اضغط للانضمام_ 👇",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+            sessions[session_id]["pinned_message_id"] = msg.message_id
+        except TelegramError:
+            msg = await update.effective_chat.send_message(
+                f"📚 *سيشن مذاكرة*\n"
+                f"· بدأها: {user.full_name}\n"
+                f"· المدة: *{fmt_duration(duration)}*"
+                f"{topic_line}\n"
+                f"· المشاركين: 1\n\n"
+                f"_السيشن هتبدأ على طول — اضغط للانضمام_ 👇",
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+            )
+            sessions[session_id]["pinned_message_id"] = msg.message_id
+
+        save_data(data)
+        await pin_msg(context.bot, update.effective_chat.id, msg.message_id)
+
+        context.job_queue.run_once(
+            start_session_job, when=2,
+            data={"chat_id": chat_id, "session_id": session_id, "chat_int": update.effective_chat.id},
+            name=f"start_{chat_id}_{session_id}",
+        )
+
+# ── In-session action buttons ──────────────────────────────────────────────
+
+async def session_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    الأزرار اللي بتظهر داخل السيشن:
+    act_break_<chat_id>_<session_id>_<uid>
+    act_back_<chat_id>_<session_id>_<uid>
+    act_end_<chat_id>_<session_id>_<uid>
+    """
+    query   = update.callback_query
+    user    = query.from_user
+    uid     = str(user.id)
+    parts   = query.data.split("_", 4)
+    action  = parts[1]          # break / back / end
+    chat_id = parts[2]
+    session_id = parts[3]
+
+    sessions = data["sessions"].get(chat_id, {})
+    session  = sessions.get(session_id)
+
+    if not session or session["state"] not in ("active",):
+        await query.answer("السيشن انتهت بالفعل.", show_alert=True)
+        return
+
+    if uid not in session.get("participants", {}):
+        await query.answer("انت مش في السيشن دي.", show_alert=True)
+        return
+
+    await query.answer()
+
+    if action == "break":
+        if uid in session.get("breaks", {}):
+            brk_end = session["breaks"][uid]["end"]
+            await query.answer(f"انت أصلاً في استراحة تخلص {fmt_time(brk_end)}", show_alert=True)
+            return
+        minutes   = 10
+        break_end = now() + timedelta(minutes=minutes)
+        session["breaks"][uid] = {"end": break_end.isoformat(), "duration": minutes, "name": user.full_name}
+        save_data(data)
+        await update_pinned_message(context.bot, chat_id, session_id, int(chat_id))
+        await context.bot.send_message(
+            int(chat_id),
+            f"☕ *{user.full_name}* أخد استراحة *10 دقايق*\n"
+            f"· ترجع الساعة: *{fmt_time(break_end.isoformat())}*\n"
+            f"_رسايلك مش هتتمسح_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        context.job_queue.run_once(
+            end_break_job, when=minutes * 60,
+            data={"chat_id": chat_id, "session_id": session_id, "chat_int": int(chat_id),
+                  "uid": uid, "name": user.full_name},
+            name=f"break_{chat_id}_{session_id}_{uid}",
+        )
+
+    elif action == "back":
+        if uid not in session.get("breaks", {}):
+            await query.answer("مفيش استراحة شغالة ليك.", show_alert=True)
+            return
+        cancel_jobs(context.job_queue, [f"break_{chat_id}_{session_id}_{uid}"])
+        session["breaks"].pop(uid, None)
+        save_data(data)
+        await update_pinned_message(context.bot, chat_id, session_id, int(chat_id))
+        await context.bot.send_message(
+            int(chat_id),
+            f"*{user.full_name}* رجع بدري — هيا نكمل 💪",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+
+    elif action == "end":
+        session.get("breaks", {}).pop(uid, None)
+        cancel_jobs(context.job_queue, [f"break_{chat_id}_{session_id}_{uid}"])
+        del session["participants"][uid]
+        save_data(data)
+        await context.bot.send_message(
+            int(chat_id),
+            f"*{user.full_name}* ساب السيشن.\n_المداومة هي المفتاح — شوفك المرة الجاية!_",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        if len(session["participants"]) == 0:
+            await context.bot.send_message(int(chat_id), "مفيش مشاركين — السيشن اتألغت.")
+            await check_and_end_empty_session(context, chat_id, session_id)
+
 def parse_mute_duration(text: str | None) -> timedelta | None:
     """يحول النص لـ timedelta — مثلاً: ساعة، يوم، 3 ساعات، 30 دقيقة، أسبوع"""
     if not text:
@@ -1332,7 +1592,10 @@ def main():
     ]:
         app.add_handler(CommandHandler(cmd, fn))
 
-    app.add_handler(CallbackQueryHandler(join_callback, pattern=r"^join_"))
+    app.add_handler(CallbackQueryHandler(join_callback,           pattern=r"^join_"))
+    app.add_handler(CallbackQueryHandler(wizard_callback,         pattern=r"^wiz_"))
+    app.add_handler(CallbackQueryHandler(session_action_callback, pattern=r"^act_"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_start_session_text))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_mute_commands))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, guard_messages))
 
